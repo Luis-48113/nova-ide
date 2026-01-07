@@ -5,184 +5,205 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nova Web IDE</title>
 <style>
-    body {
-        font-family: monospace;
-        background: #111;
-        color: #eee;
-        margin: 0;
-        padding: 20px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-    }
-    #editor {
-        width: 90%;
-        height: 250px;
-        background: #222;
-        color: #eee;
-        font-family: monospace;
-        padding: 10px;
-        border: none;
-        outline: none;
-        resize: vertical;
-        margin-bottom: 10px;
-    }
-    #runBtn {
-        padding: 10px 20px;
-        font-size: 16px;
-        margin-bottom: 10px;
-        cursor: pointer;
-        background: #444;
-        color: #eee;
-        border: none;
-    }
-    #terminal {
-        width: 90%;
-        min-height: 150px;
-        background: #222;
-        padding: 10px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        border: 1px solid #555;
-    }
+body { font-family: monospace; background:#121212; color:#f5f5f5; padding:20px; }
+textarea { width:100%; height:200px; background:#1e1e1e; color:#f5f5f5; border:none; padding:10px; resize:none; }
+#runBtn { padding:10px 20px; margin:10px 0; background:#3a3a3a; color:white; border:none; cursor:pointer; }
+#terminal { width:100%; height:200px; background:#1e1e1e; color:#f5f5f5; overflow:auto; padding:10px; white-space:pre-wrap; }
 </style>
 </head>
 <body>
 
-<textarea id="editor">// Write your Nova code here
-define demo:
-    say"Hello from Nova Web IDE!"
-    x is 5
-    y is x plus 10
-    sayy
-    loop(3):
-        say"Looping..."
-    ask"What is your favorite number?"
-    say_input
+<h2>Nova Web IDE</h2>
 
-run demo
-</textarea>
+<textarea id="editor" placeholder="Type your Nova code here..."></textarea>
 <button id="runBtn">Run</button>
 <div id="terminal"></div>
 
 <script>
-const modules = {
-    math: {
-        sqrt: (n) => Math.sqrt(n),
-        pow: (a,b) => Math.pow(a,b),
-        random: () => Math.random()
-    },
-    time: {
-        wait: (s) => new Promise(res => setTimeout(res, s*1000))
+class NovaError extends Error {
+    constructor(message,line,col){
+        super(`ERROR! ${message} in L${line} C${col}`);
+        this.line = line;
+        this.col = col;
     }
-};
+}
 
-// Stage 5 Nova JS Interpreter
-async function runNova() {
-    const editor = document.getElementById("editor");
-    const terminal = document.getElementById("terminal");
-    const lines = editor.value.split("\n");
-    const functions = {};
-    const globalVars = {};
-    let localVars = {};
-    terminal.textContent = "";
+class ExpressionParser {
+    constructor(localVars,globalVars){
+        this.local = localVars;
+        this.global = globalVars;
+    }
+    tokenize(expr){
+        expr = expr.replace(/plus/g,'+').replace(/minus/g,'-');
+        expr = expr.replace(/times/g,'*').replace(/divided by/g,'/');
+        return expr.match(/[A-Za-z_]\w*|\d+|[\+\-\*\/\(\)]/g) || [];
+    }
+    parseToken(token){
+        if(this.local[token]!==undefined) return this.local[token];
+        if(this.global[token]!==undefined) return this.global[token];
+        if(/^\d+$/.test(token)) return parseInt(token);
+        if('+-*/()'.includes(token)) return token;
+        throw new NovaError(`Unknown token: ${token}`,0,0);
+    }
+    toRPN(tokens){
+        let precedence={'+' :1, '-':1, '*':2, '/':2};
+        let output=[]; let stack=[];
+        for(let t of tokens){
+            if(typeof t==='number'){ output.push(t);}
+            else if('+-*/'.includes(t)){
+                while(stack.length>0 && '+-*/'.includes(stack[stack.length-1]) && precedence[t]<=precedence[stack[stack.length-1]]){
+                    output.push(stack.pop());
+                }
+                stack.push(t);
+            }
+            else if(t==='('){stack.push(t);}
+            else if(t===')'){ while(stack[stack.length-1]!=='(') output.push(stack.pop()); stack.pop();}
+        }
+        while(stack.length>0) output.push(stack.pop());
+        return output;
+    }
+    evaluateRPN(rpn){
+        let stack=[];
+        for(let t of rpn){
+            if(typeof t==='number'){ stack.push(t);}
+            else{
+                let b=stack.pop(), a=stack.pop();
+                if(t==='+') stack.push(a+b);
+                else if(t==='-') stack.push(a-b);
+                else if(t==='*') stack.push(a*b);
+                else if(t==='/') stack.push(a/b);
+            }
+        }
+        return stack[0];
+    }
+    parse(expr){
+        let tokens=this.tokenize(expr).map(t=>this.parseToken(t));
+        let rpn=this.toRPN(tokens);
+        return this.evaluateRPN(rpn);
+    }
+}
 
-    async function executeLines(linesToRun) {
-        let i = 0;
-        while (i < linesToRun.length) {
-            let line = linesToRun[i].trim();
-            if (!line || line.startsWith("//")) { i++; continue; }
+class NovaInterpreter{
+    constructor(terminal){
+        this.terminal=terminal;
+        this.functions={};
+        this.globalVars={};
+    }
+    async run(code){
+        let lines=code.split(/\r?\n/);
+        await this.executeLines(lines);
+    }
+    async executeLines(lines,localVars={}){
+        let i=0;
+        while(i<lines.length){
+            let line=lines[i].trim();
+            if(!line || line.startsWith('#')){i++; continue;}
 
-            // DEFINE function
-            if (line.startsWith("define ")) {
-                const name = line.slice(7).replace(":", "").trim();
-                let body = [];
+            // define
+            if(line.startsWith("define ")){
+                let name=line.slice(7).replace(':','').trim();
+                let body=[];
                 i++;
-                while (i < linesToRun.length && (linesToRun[i].startsWith("    ") || linesToRun[i].startsWith("\t"))) {
-                    body.push(linesToRun[i].replace(/^ {4}|\t/, ""));
+                while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){
+                    body.push(lines[i].replace(/^ {4}|\t/,''));
                     i++;
                 }
-                functions[name] = body;
+                if(body.length===0) throw new NovaError(`Function '${name}' has no body`,i+1,8);
+                this.functions[name]=body;
                 continue;
             }
-
-            // RUN function
-            else if (line.startsWith("run ")) {
-                const name = line.slice(4).trim();
-                if (!functions[name]) { terminal.textContent += `ERROR: Unknown function '${name}'\n`; return; }
-                await executeLines(functions[name]);
+            // run
+            else if(line.startsWith("run ")){
+                let name=line.slice(4).trim();
+                if(!this.functions[name]) throw new NovaError(`Unknown function '${name}'`,i+1,5);
+                await this.executeLines(this.functions[name], {...localVars});
             }
-
-            // Variable assignment
-            else if (line.includes(" is ")) {
-                let [varName, expr] = line.split(" is ");
-                varName = varName.trim();
-                expr = expr.trim();
-                let val = expr
-                    .replace(/\bplus\b/g,"+")
-                    .replace(/\bminus\b/g,"-")
-                    .replace(/\btimes\b/g,"*")
-                    .replace(/\bdivided by\b/g,"/");
-                try {
-                    val = eval(val.replace(/\b(\w+)\b/g, (m)=>{ return (localVars[m]!==undefined)?localVars[m]:(globalVars[m]!==undefined)?globalVars[m]:m; }));
-                } catch { terminal.textContent += `ERROR: Invalid expression '${expr}'\n`; return; }
-                localVars[varName] = val;
-            }
-
-            // SAY
-            else if (line.startsWith("say")) {
-                const content = line.slice(3).trim();
-                if ((content.startsWith('"') && content.endsWith('"')) || (content.startsWith("'") && content.endsWith("'"))) {
-                    terminal.textContent += content.slice(1,-1) + "\n";
-                } else if (localVars[content] !== undefined) {
-                    terminal.textContent += localVars[content] + "\n";
-                } else {
-                    terminal.textContent += `ERROR: Unknown variable or string '${content}'\n`;
-                    return;
+            // assignment
+            else if(line.includes(" is ")){
+                let [v,expr]=line.split(" is ").map(s=>s.trim());
+                let value;
+                if(expr.startsWith("ask")){
+                    let question=expr.slice(3).trim().replace(/^['"]|['"]$/g,'');
+                    value=prompt(question);
+                } else{
+                    let parser=new ExpressionParser(localVars,this.globalVars);
+                    value=parser.parse(expr);
                 }
+                localVars[v]=value;
             }
-
-            // ASK
-            else if (line.startsWith("ask")) {
-                const question = line.slice(3).trim().slice(1,-1);
-                const answer = prompt(question);
-                localVars["input"] = answer;
-                localVars["input_value"] = answer;
+            // say
+            else if(line.startsWith("say")){
+                let content=line.slice(3).trim();
+                if(/^["'].*["']$/.test(content)) this.print(content.slice(1,-1));
+                else if(localVars[content]!==undefined) this.print(localVars[content]);
+                else throw new NovaError(`Unknown variable or string '${content}'`,i+1,5);
             }
-
-            // LOOP
-            else if (line.startsWith("loop")) {
-                let loopCount = null;
-                const match = line.match(/loop\((\d+)\)/);
-                if (match) loopCount = parseInt(match[1]);
-                const block = [];
+            // ask standalone
+            else if(line.startsWith("ask")){
+                let question=line.slice(3).trim().replace(/^['"]|['"]$/g,'');
+                let answer=prompt(question);
+                localVars['input']=answer;
+            }
+            // loop
+            else if(line.startsWith("loop")){
+                let match=line.match(/loop(?:\((\d+)\))?/);
+                let count=match[1]?parseInt(match[1]):null;
+                let block=[];
                 i++;
-                while (i < linesToRun.length && (linesToRun[i].startsWith("    ") || linesToRun[i].startsWith("\t"))) {
-                    block.push(linesToRun[i].replace(/^ {4}|\t/, ""));
+                while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){
+                    block.push(lines[i].replace(/^ {4}|\t/,''));
                     i++;
                 }
-                if (!block.length) { terminal.textContent += `ERROR: loop has no body\n`; return; }
-                let iterations = 0;
-                while (loopCount === null || iterations < loopCount) {
-                    await executeLines(block);
-                    iterations++;
+                let iter=0;
+                while(count===null || iter<count){
+                    await this.executeLines(block,{...localVars});
+                    iter++;
+                    if(count===null) break; // prevent infinite in browser demo
                 }
                 continue;
             }
-
-            else {
-                terminal.textContent += `ERROR: Unknown command '${line}'\n`;
-                return;
+            // check/otherwise
+            else if(line.startsWith("check ")){
+                let cond=line.slice(6).trim();
+                let parser=new ExpressionParser(localVars,this.globalVars);
+                let result=parser.parse(cond);
+                let block=[]; i++;
+                while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){
+                    block.push(lines[i].replace(/^ {4}|\t/,''));
+                    i++;
+                }
+                if(result) await this.executeLines(block,{...localVars});
+                if(i<lines.length && lines[i].trim().startsWith("otherwise:")){
+                    let oblock=[]; i++;
+                    while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){
+                        oblock.push(lines[i].replace(/^ {4}|\t/,''));
+                        i++;
+                    }
+                    if(!result) await this.executeLines(oblock,{...localVars});
+                }
+                continue;
             }
-
+            else throw new NovaError(`Unknown command '${line}'`,i+1,1);
             i++;
         }
     }
-
-    await executeLines(lines);
+    print(msg){
+        this.terminal.innerText+=msg+'\n';
+        this.terminal.scrollTop=this.terminal.scrollHeight;
+    }
 }
 
-document.getElementById("runBtn").addEventListener("click", runNova);
+document.getElementById('runBtn').addEventListener('click',async()=>{
+    let code=document.getElementById('editor').value;
+    let term=document.getElementById('terminal');
+    term.innerText="";
+    let nova=new NovaInterpreter(term);
+    try{
+        await nova.run(code);
+    }catch(e){
+        term.innerText+=e.toString()+'\n';
+    }
+});
 </script>
 
 </body>
