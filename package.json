@@ -1,0 +1,27 @@
+{
+  "name": "nova-ide-syntax",
+  "identifier": "com.luis48113.nova-ide-syntax",
+  "version": "0.1.0",
+  "description": "Syntax highlighting for .nova files",
+  "author": "Luis-48113",
+  "engines": {
+    "nova": ">=9.0.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "nova",
+        "name": "Nova",
+        "extensions": [".nova"],
+        "tmScope": "source.nova"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "nova",
+        "scopeName": "source.nova",
+        "path": "./Syntaxes/nova.tmLanguage.json"
+      }
+    ]
+  }
+}
