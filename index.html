@@ -1,210 +1,308 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nova Web IDE</title>
-<style>
-body { font-family: monospace; background:#121212; color:#f5f5f5; padding:20px; }
-textarea { width:100%; height:200px; background:#1e1e1e; color:#f5f5f5; border:none; padding:10px; resize:none; }
-#runBtn { padding:10px 20px; margin:10px 0; background:#3a3a3a; color:white; border:none; cursor:pointer; }
-#terminal { width:100%; height:200px; background:#1e1e1e; color:#f5f5f5; overflow:auto; padding:10px; white-space:pre-wrap; }
-</style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nova Web IDE — Lightweight In-Browser Editor</title>
+    <style>
+        :root{
+            --bg:#0f1720; --panel:#0b1220; --muted:#9aa6b2; --accent:#58a6ff; --accent-2:#7c5cff; --success:#22c55e; --danger:#ff6b6b; --glass:rgba(255,255,255,0.03);
+            --radius:10px; --mono: 'Fira Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, 'Segoe UI Mono', monospace;
+        }
+        html,body{height:100%; margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background:linear-gradient(180deg,var(--bg),#071019); color:#e6eef4}
+        .app{display:flex; height:100vh; gap:18px; padding:18px; box-sizing:border-box}
+        .sidebar{width:260px; background:linear-gradient(180deg,var(--panel),#071229); border-radius:var(--radius); padding:14px; box-shadow:0 8px 30px rgba(2,6,23,0.7); display:flex; flex-direction:column}
+        .brand{font-weight:700; letter-spacing:0.6px; font-size:16px; display:flex; align-items:center; gap:10px}
+        .logo{width:36px; height:36px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:700}
+        .files{margin-top:14px; flex:1; overflow:auto}
+        .file{padding:8px 10px; border-radius:8px; cursor:pointer; color:var(--muted); display:flex; justify-content:space-between; align-items:center}
+        .file.active{background:var(--glass); color:var(--accent)}
+        .toolbar{display:flex; gap:8px; margin-top:12px}
+        .btn{background:transparent; border:1px solid rgba(255,255,255,0.04); color:var(--muted); padding:8px 10px; border-radius:8px; cursor:pointer}
+        .btn.primary{background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#041025; border:none}
+        .main{flex:1; display:flex; flex-direction:column; gap:14px}
+        .topbar{display:flex; align-items:center; gap:12px}
+        .title{font-size:18px; font-weight:600}
+        .editor-panel{flex:1; display:flex; gap:14px}
+        .editor{flex:1; border-radius:10px; overflow:hidden; background:#071525; display:flex; flex-direction:column; box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+        .tabs{display:flex; gap:8px; padding:10px; border-bottom:1px solid rgba(255,255,255,0.02)}
+        .tab{padding:6px 10px; border-radius:7px; color:var(--muted); cursor:pointer}
+        .tab.active{background:rgba(255,255,255,0.03); color:var(--accent)}
+        .code{flex:1; display:flex; gap:10px; padding:12px}
+        textarea#editor{flex:1; resize:vertical; min-height:300px; height:520px; background:transparent; color:#e6eef4; border:none; outline:none; padding:12px; font-family:var(--mono); font-size:13px; line-height:1.5}
+        .sidebar-doc{width:380px; background:linear-gradient(180deg,#06121a,#051019); border-radius:10px; padding:12px; box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+        .terminal{height:220px; background:#071224; padding:12px; border-radius:10px; font-family:var(--mono); font-size:13px; color:#dff1ff; overflow:auto; white-space:pre-wrap}
+        .controls{display:flex; gap:8px; align-items:center}
+        .small{font-size:12px; color:var(--muted)}
+        .kbd{background:rgba(255,255,255,0.03); padding:4px 8px; border-radius:6px; color:var(--muted); font-family:var(--mono); font-size:12px}
+        .palette{position:fixed; left:50%; top:18%; transform:translateX(-50%); width:720px; max-width:92%; background:#05151b; border-radius:12px; padding:12px; box-shadow:0 20px 60px rgba(0,0,0,0.7); display:none; z-index:80}
+        .palette input{width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.03); background:transparent; color:#e6eef4}
+        .palette-list{max-height:240px; overflow:auto; margin-top:8px}
+        .palette-item{padding:8px;border-radius:8px;cursor:pointer;color:var(--muted)}
+        .palette-item:hover{background:rgba(255,255,255,0.02); color:var(--accent)}
+        .footer{display:flex; justify-content:space-between; align-items:center; padding:8px 6px; color:var(--muted); font-size:13px}
+        .meta{display:flex; gap:8px; align-items:center}
+        .example-list{display:flex; flex-direction:column; gap:8px; margin-top:10px}
+        .example{padding:8px; border-radius:8px; background:rgba(255,255,255,0.02); cursor:pointer; color:var(--muted)}
+        .muted{color:var(--muted)}
+        /* small responsive tweaks */
+        @media (max-width:980px){ .sidebar{display:none} .sidebar-doc{display:none} .app{padding:12px} }
+    </style>
 </head>
 <body>
+    <div class="app">
+        <div class="sidebar">
+            <div class="brand"><div class="logo">N</div>Nova Web IDE</div>
+            <div class="small muted">Local in-browser environment — no server</div>
+            <div class="files" id="fileList"></div>
+            <div class="toolbar">
+                <button class="btn" id="newFileBtn">New</button>
+                <button class="btn" id="saveFileBtn">Save</button>
+                <button class="btn" id="deleteFileBtn">Delete</button>
+            </div>
+            <div style="margin-top:12px">
+                <div class="small muted">Quick actions</div>
+                <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+                    <button class="btn" id="runBtnSmall">Run</button>
+                    <button class="btn" id="clearTermBtn">Clear</button>
+                    <button class="btn" id="examplesBtn">Examples</button>
+                </div>
+            </div>
+        </div>
 
-<h2>Nova Web IDE</h2>
+        <div class="main">
+            <div class="topbar">
+                <div class="title">Nova Web IDE</div>
+                <div class="controls">
+                    <div class="kbd">Ctrl+Enter</div>
+                    <div class="kbd">Ctrl+S</div>
+                    <div class="kbd">Ctrl+P</div>
+                </div>
+                <div style="flex:1"></div>
+                <div class="small muted">Theme</div>
+                <button class="btn" id="themeBtn">Toggle</button>
+            </div>
 
-<textarea id="editor" placeholder="Type your Nova code here..."></textarea>
-<button id="runBtn">Run</button>
-<div id="terminal"></div>
+            <div class="editor-panel">
+                <div class="editor">
+                    <div class="tabs" id="tabs"></div>
+                    <div class="code">
+                        <textarea id="editor" spellcheck="false" placeholder="Write Nova scripts here..."></textarea>
+                    </div>
+                    <div class="footer">
+                        <div class="meta"> <span id="status">Ready</span> • <span class="muted" id="cursorPos">Ln 1, Col 1</span></div>
+                        <div><button class="btn" id="formatBtn">Format</button> <button class="btn primary" id="runBtn">Run</button></div>
+                    </div>
+                </div>
 
-<script>
-class NovaError extends Error {
-    constructor(message,line,col){
-        super(`ERROR! ${message} in L${line} C${col}`);
-        this.line = line;
-        this.col = col;
-    }
-}
+                <div class="sidebar-doc">
+                    <div style="display:flex; justify-content:space-between; align-items:center">
+                        <div><strong>Terminal</strong></div>
+                        <div class="small muted">Outputs & logs</div>
+                    </div>
+                    <div id="terminal" class="terminal"></div>
+                    <div style="margin-top:10px"><strong>Examples</strong>
+                        <div class="example-list" id="exampleList"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-class ExpressionParser {
-    constructor(localVars,globalVars){
-        this.local = localVars;
-        this.global = globalVars;
-    }
-    tokenize(expr){
-        expr = expr.replace(/plus/g,'+').replace(/minus/g,'-');
-        expr = expr.replace(/times/g,'*').replace(/divided by/g,'/');
-        return expr.match(/[A-Za-z_]\w*|\d+|[\+\-\*\/\(\)]/g) || [];
-    }
-    parseToken(token){
-        if(this.local[token]!==undefined) return this.local[token];
-        if(this.global[token]!==undefined) return this.global[token];
-        if(/^\d+$/.test(token)) return parseInt(token);
-        if('+-*/()'.includes(token)) return token;
-        throw new NovaError(`Unknown token: ${token}`,0,0);
-    }
-    toRPN(tokens){
-        let precedence={'+' :1, '-':1, '*':2, '/':2};
-        let output=[]; let stack=[];
-        for(let t of tokens){
-            if(typeof t==='number'){ output.push(t);}
-            else if('+-*/'.includes(t)){
-                while(stack.length>0 && '+-*/'.includes(stack[stack.length-1]) && precedence[t]<=precedence[stack[stack.length-1]]){
-                    output.push(stack.pop());
-                }
-                stack.push(t);
-            }
-            else if(t==='('){stack.push(t);}
-            else if(t===')'){ while(stack[stack.length-1]!=='(') output.push(stack.pop()); stack.pop();}
+    <div class="palette" id="palette">
+        <input id="paletteInput" placeholder="Type a command, e.g. Run, Save, Load example..." />
+        <div class="palette-list" id="paletteList"></div>
+    </div>
+
+    <script>
+        // Utilities
+        const el = (s, parent=document)=> parent.querySelector(s);
+        const mk = (tag, attrs={})=> Object.assign(document.createElement(tag), attrs);
+        function debounce(fn, wait=150){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), wait); }}
+
+        // File management (localStorage)
+        class FileManager{
+            constructor(key='nova_files'){ this.key=key; this.files = this._load(); if(!this.files['untitled']) this.create('untitled', defaultScript()); }
+            _load(){ try{ return JSON.parse(localStorage.getItem(this.key)||'{}'); }catch(e){ return {}; }}
+            _save(){ localStorage.setItem(this.key, JSON.stringify(this.files)); }
+            list(){ return Object.keys(this.files); }
+            get(name){ return this.files[name]||''; }
+            create(name, content=''){ let idx=1; let base=name; while(this.files[name]){ name=base+'_'+idx; idx++; } this.files[name]=content; this._save(); return name; }
+            save(name, content){ this.files[name]=content; this._save(); }
+            delete(name){ delete this.files[name]; this._save(); }
         }
-        while(stack.length>0) output.push(stack.pop());
-        return output;
-    }
-    evaluateRPN(rpn){
-        let stack=[];
-        for(let t of rpn){
-            if(typeof t==='number'){ stack.push(t);}
-            else{
-                let b=stack.pop(), a=stack.pop();
-                if(t==='+') stack.push(a+b);
-                else if(t==='-') stack.push(a-b);
-                else if(t==='*') stack.push(a*b);
-                else if(t==='/') stack.push(a/b);
-            }
+
+        // Simple in-editor helpers
+        function defaultScript(){ return `# Nova example: fibonacci\n# define a function and run it\ndefine fib:
+        a is 0
+        b is 1
+        say "Fib sequence:"
+        loop(10):
+                say a
+                tmp is a + b
+                a is b
+                b is tmp
+
+run fib
+`; }
+
+        // Command Palette
+        const commands = [
+            {id:'run', title:'Run Current Script', run:()=>doRun()},
+            {id:'save', title:'Save Current File', run:()=>saveCurrent()},
+            {id:'new', title:'New File', run:()=>newFile()},
+            {id:'clear', title:'Clear Terminal', run:()=>clearTerminal()},
+            {id:'examples', title:'Show Examples', run:()=>showExamples()}
+        ];
+
+        // Editor + UI wiring
+        const fm = new FileManager();
+        let currentFile = fm.list()[0];
+        const fileList = el('#fileList'); const editor = el('#editor'); const terminal = el('#terminal'); const tabs = el('#tabs'); const palette = el('#palette'); const paletteInput = el('#paletteInput'); const paletteList = el('#paletteList');
+
+        function renderFileList(){ fileList.innerHTML=''; for(let f of fm.list()){ let div = mk('div'); div.className='file'+(f===currentFile?' active':''); div.textContent=f; div.onclick=()=>openFile(f); let del = mk('div'); del.style.opacity=0.5; del.textContent=''; div.appendChild(del); fileList.appendChild(div); }}
+        function renderTabs(){ tabs.innerHTML=''; for(let f of fm.list()){ let t = mk('div'); t.className='tab'+(f===currentFile?' active':''); t.textContent=f; t.onclick=()=>openFile(f); tabs.appendChild(t);} }
+
+        function openFile(name){ if(!fm.get(name)) return; currentFile=name; editor.value = fm.get(name); renderFileList(); renderTabs(); setStatus('Opened '+name); }
+        function newFile(){ let name = fm.create('untitled', defaultScript()); openFile(name); }
+        function saveCurrent(){ fm.save(currentFile, editor.value); setStatus('Saved '+currentFile); }
+        function deleteCurrent(){ if(confirm('Delete '+currentFile+'?')){ fm.delete(currentFile); let list=fm.list(); currentFile=list[0]||fm.create('untitled', defaultScript()); openFile(currentFile);} }
+
+        // Terminal helpers
+        function println(msg, type='log'){ const line = document.createElement('div'); line.textContent = msg; if(type==='err') line.style.color='var(--danger)'; if(type==='ok') line.style.color='var(--success)'; terminal.appendChild(line); terminal.scrollTop = terminal.scrollHeight; }
+        function clearTerminal(){ terminal.innerHTML=''; }
+        function setStatus(text){ el('#status').textContent = text; }
+
+        // Populate examples
+        const exampleList = el('#exampleList');
+        const EXAMPLES = {
+            'Fibonacci': defaultScript(),
+            'Counter': `# Count up to 5\ndefine cnt:\n    i is 0\n    loop(5):\n        say i\n        i is i + 1\nrun cnt\n`,
+            'Ask Name': `say "What's your name?"\nask 'Enter name:'\nsay input\n`,
+        };
+        function renderExamples(){ exampleList.innerHTML=''; for(let k in EXAMPLES){ let d = mk('div'); d.className='example'; d.textContent=k; d.onclick=()=>{ editor.value = EXAMPLES[k]; setStatus('Loaded example '+k); }; exampleList.appendChild(d);} }
+
+        // Keyboard shortcuts
+        window.addEventListener('keydown', (e)=>{
+            if((e.ctrlKey||e.metaKey) && e.key === 'Enter'){ e.preventDefault(); doRun(); }
+            if((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); saveCurrent(); }
+            if((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === 'p'){ e.preventDefault(); togglePalette(true); }
+            if(e.key === 'Escape') togglePalette(false);
+        });
+
+        // Palette wiring
+        function togglePalette(show){ if(show){ palette.style.display='block'; paletteInput.focus(); paletteInput.select(); updatePalette(''); } else palette.style.display='none'; }
+        paletteInput.addEventListener('input', debounce(()=> updatePalette(paletteInput.value), 60));
+        function updatePalette(q){ paletteList.innerHTML=''; const lower=q.toLowerCase(); for(let c of commands.filter(x=>x.title.toLowerCase().includes(lower) || x.id.includes(lower))){ let it = mk('div'); it.className='palette-item'; it.textContent = c.title; it.onclick = ()=>{ c.run(); togglePalette(false); }; paletteList.appendChild(it); } }
+
+        // Formatting helper (basic)
+        function formatCode(src){ // normalize indentation and trim trailing spaces
+            let lines = src.split(/\r?\n/).map(l=>l.replace(/[ \t]+$/,'')).map(l=> l.replace(/^\t/,'    '));
+            return lines.join('\n');
         }
-        return stack[0];
-    }
-    parse(expr){
-        let tokens=this.tokenize(expr).map(t=>this.parseToken(t));
-        let rpn=this.toRPN(tokens);
-        return this.evaluateRPN(rpn);
-    }
-}
 
-class NovaInterpreter{
-    constructor(terminal){
-        this.terminal=terminal;
-        this.functions={};
-        this.globalVars={};
-    }
-    async run(code){
-        let lines=code.split(/\r?\n/);
-        await this.executeLines(lines);
-    }
-    async executeLines(lines,localVars={}){
-        let i=0;
-        while(i<lines.length){
-            let line=lines[i].trim();
-            if(!line || line.startsWith('#')){i++; continue;}
+        // Nova interpreter (extended)
+        class NovaError extends Error{ constructor(msg,line=0){ super(msg); this.line=line; } }
 
-            // define
-            if(line.startsWith("define ")){
-                let name=line.slice(7).replace(':','').trim();
-                let body=[];
-                i++;
-                while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){
-                    body.push(lines[i].replace(/^ {4}|\t/,''));
-                    i++;
+        class ExpressionParser {
+            constructor(local={}, globals={}){ this.local=local; this.globals=globals; }
+            tokenize(expr){ if(expr===undefined||expr===null) return []; expr = String(expr);
+                // add support for floats and function calls
+                const tokens = expr.match(/[A-Za-z_]\w*|\d+\.\d+|\d+|==|!=|<=|>=|[\+\-\*\/\(\)\[\],<>]/g) || [];
+                return tokens.map(t=> this._parseToken(t));
+            }
+            _parseToken(t){ if(/^\d+\.\d+$/.test(t)) return parseFloat(t); if(/^\d+$/.test(t)) return parseInt(t); if(this.local && this.local[t]!==undefined) return this.local[t]; if(this.globals && this.globals[t]!==undefined) return this.globals[t]; return t; }
+            // Shunting-yard simplified for + - * / and comparisons
+            toRPN(tokens){ const prec = {'+':1,'-':1,'*':2,'/':2,'<':0,'>':0,'==':0,'!=':0,'<=':0,'>=':0}; let out=[], ops=[];
+                for(let t of tokens){ if(typeof t === 'number' || typeof t === 'string' && !/[+\-*/<>=(),\[\]]/.test(t)) out.push(t);
+                    else if('+-*/<>!='.includes(String(t)[0])){ while(ops.length && prec[ops[ops.length-1]]>=prec[t]) out.push(ops.pop()); ops.push(t); }
+                    else if(t==='(') ops.push(t); else if(t===')'){ while(ops.length && ops[ops.length-1] !== '(') out.push(ops.pop()); ops.pop(); }
                 }
-                if(body.length===0) throw new NovaError(`Function '${name}' has no body`,i+1,8);
-                this.functions[name]=body;
-                continue;
+                while(ops.length) out.push(ops.pop()); return out;
             }
-            // run
-            else if(line.startsWith("run ")){
-                let name=line.slice(4).trim();
-                if(!this.functions[name]) throw new NovaError(`Unknown function '${name}'`,i+1,5);
-                await this.executeLines(this.functions[name], {...localVars});
-            }
-            // assignment
-            else if(line.includes(" is ")){
-                let [v,expr]=line.split(" is ").map(s=>s.trim());
-                let value;
-                if(expr.startsWith("ask")){
-                    let question=expr.slice(3).trim().replace(/^['"]|['"]$/g,'');
-                    value=prompt(question);
-                } else{
-                    let parser=new ExpressionParser(localVars,this.globalVars);
-                    value=parser.parse(expr);
-                }
-                localVars[v]=value;
-            }
-            // say
-            else if(line.startsWith("say")){
-                let content=line.slice(3).trim();
-                if(/^["'].*["']$/.test(content)) this.print(content.slice(1,-1));
-                else if(localVars[content]!==undefined) this.print(localVars[content]);
-                else throw new NovaError(`Unknown variable or string '${content}'`,i+1,5);
-            }
-            // ask standalone
-            else if(line.startsWith("ask")){
-                let question=line.slice(3).trim().replace(/^['"]|['"]$/g,'');
-                let answer=prompt(question);
-                localVars['input']=answer;
-            }
-            // loop
-            else if(line.startsWith("loop")){
-                let match=line.match(/loop(?:\((\d+)\))?/);
-                let count=match[1]?parseInt(match[1]):null;
-                let block=[];
-                i++;
-                while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){
-                    block.push(lines[i].replace(/^ {4}|\t/,''));
-                    i++;
-                }
-                let iter=0;
-                while(count===null || iter<count){
-                    await this.executeLines(block,{...localVars});
-                    iter++;
-                    if(count===null) break; // prevent infinite in browser demo
-                }
-                continue;
-            }
-            // check/otherwise
-            else if(line.startsWith("check ")){
-                let cond=line.slice(6).trim();
-                let parser=new ExpressionParser(localVars,this.globalVars);
-                let result=parser.parse(cond);
-                let block=[]; i++;
-                while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){
-                    block.push(lines[i].replace(/^ {4}|\t/,''));
-                    i++;
-                }
-                if(result) await this.executeLines(block,{...localVars});
-                if(i<lines.length && lines[i].trim().startsWith("otherwise:")){
-                    let oblock=[]; i++;
-                    while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){
-                        oblock.push(lines[i].replace(/^ {4}|\t/,''));
-                        i++;
+            evalRPN(rpn){ let s=[]; for(let t of rpn){ if(typeof t === 'number' || typeof t === 'string' && !/[+\-*/<>=]/.test(String(t))){ s.push(t); } else { let b=s.pop(), a=s.pop(); switch(t){ case '+': s.push(a+b); break; case '-': s.push(a-b); break; case '*': s.push(a*b); break; case '/': s.push(a/b); break; case '<': s.push(a<b); break; case '>': s.push(a>b); break; case '==': s.push(a==b); break; case '!=': s.push(a!=b); break; case '<=': s.push(a<=b); break; case '>=': s.push(a>=b); break; default: throw new NovaError('Unknown operator '+t); } } } return s[0]; }
+            parse(expr){ const t=this.tokenize(expr); const r=this.toRPN(t); return this.evalRPN(r); }
+        }
+
+        class NovaInterpreter{
+            constructor(outputEl){ this.terminal=outputEl; this.functions={}; this.globals={}; this.running=false; }
+            async run(code){ this.running=true; const lines = code.split(/\r?\n/); try{ await this._execute(lines); }catch(e){ println('Interpreter error: '+e.message,'err'); } this.running=false; }
+            async _execute(lines, local={}){
+                for(let i=0;i<lines.length;i++){
+                    let raw = lines[i]; let line = raw.trim(); if(!line || line.startsWith('#')) continue;
+                    // function definition
+                    if(line.startsWith('define ')){
+                        const name = line.slice(7).replace(':','').trim(); const body=[]; i++; while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ body.push(lines[i].replace(/^\s{1,4}/,'')); i++; } this.functions[name]=body; i--; continue;
                     }
-                    if(!result) await this.executeLines(oblock,{...localVars});
+                    // run function
+                    if(line.startsWith('run ')){
+                        const name = line.slice(4).trim(); if(!this.functions[name]) throw new NovaError('Unknown function '+name,i+1); await this._execute(this.functions[name], {...local}); continue;
+                    }
+                    // assignment: <var> is <expr>
+                    if(line.includes(' is ')){
+                        const [lhs, rhs] = line.split(' is ').map(s=>s.trim()); if(rhs.startsWith('ask')){ const q=rhs.slice(3).trim().replace(/^['\"]|['\"]$/g,''); local[lhs]=prompt(q); }
+                        else{ const p=new ExpressionParser(local,this.globals); local[lhs]=p.parse(rhs); } continue;
+                    }
+                    // say
+                    if(line.startsWith('say')){
+                        const arg=line.slice(3).trim(); if(/^['\"].*['\"]$/.test(arg)) println(arg.slice(1,-1)); else if(local[arg]!==undefined) println(local[arg]); else println(arg); continue;
+                    }
+                    // ask
+                    if(line.startsWith('ask')){ const q=line.slice(3).trim().replace(/^['\"]|['\"]$/g,''); local['input']=prompt(q); continue; }
+                    // loop
+                    if(line.startsWith('loop')){
+                        const m=line.match(/loop(?:\((\d+)\))?/); const count=m&&m[1]?parseInt(m[1]):null; const blk=[]; i++; while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ blk.push(lines[i].replace(/^\s{1,4}/,'')); i++; } if(count===null){ // run once to be safe
+                            await this._execute(blk,{...local});
+                        } else { for(let k=0;k<count;k++) await this._execute(blk,{...local}); }
+                        i--; continue;
+                    }
+                    // check/otherwise
+                    if(line.startsWith('check ')){
+                        const cond=line.slice(6).trim(); const p=new ExpressionParser(local,this.globals); const ok=p.parse(cond); const blk=[]; i++; while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ blk.push(lines[i].replace(/^\s{1,4}/,'')); i++; }
+                        if(ok) await this._execute(blk,{...local}); if(i<lines.length && lines[i].trim().startsWith('otherwise:')){ const oblk=[]; i++; while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ oblk.push(lines[i].replace(/^\s{1,4}/,'')); i++; } if(!ok) await this._execute(oblk,{...local}); }
+                        i--; continue;
+                    }
+                    // simple commands
+                    if(line==='clear'){ clearTerminal(); continue; }
+                    if(line==='stop'){ println('Stop requested'); break; }
+                    // fallback
+                    throw new NovaError('Unknown command: '+line,i+1);
                 }
-                continue;
             }
-            else throw new NovaError(`Unknown command '${line}'`,i+1,1);
-            i++;
         }
-    }
-    print(msg){
-        this.terminal.innerText+=msg+'\n';
-        this.terminal.scrollTop=this.terminal.scrollHeight;
-    }
-}
 
-document.getElementById('runBtn').addEventListener('click',async()=>{
-    let code=document.getElementById('editor').value;
-    let term=document.getElementById('terminal');
-    term.innerText="";
-    let nova=new NovaInterpreter(term);
-    try{
-        await nova.run(code);
-    }catch(e){
-        term.innerText+=e.toString()+'\n';
-    }
-});
-</script>
+        // Actions
+        async function doRun(){ clearTerminal(); setStatus('Running'); const nova = new NovaInterpreter(terminal); try{ await nova.run(editor.value); setStatus('Finished'); }catch(e){ println('Runtime error: '+e.message,'err'); setStatus('Error'); } }
 
+        // Wire UI buttons
+        el('#runBtn').addEventListener('click', doRun);
+        el('#runBtnSmall').addEventListener('click', doRun);
+        el('#saveFileBtn').addEventListener('click', saveCurrent);
+        el('#newFileBtn').addEventListener('click', newFile);
+        el('#deleteFileBtn').addEventListener('click', ()=>{ deleteCurrent(); renderFileList(); renderTabs(); });
+        el('#clearTermBtn').addEventListener('click', clearTerminal);
+        el('#examplesBtn').addEventListener('click', showExamples);
+        el('#formatBtn').addEventListener('click', ()=>{ editor.value = formatCode(editor.value); setStatus('Formatted'); });
+        el('#themeBtn').addEventListener('click', ()=>{ document.documentElement.classList.toggle('dark'); setStatus('Theme toggled'); });
+
+        // Simple save as file
+        function download(filename, text){ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type:'text/plain'})); a.download = filename; document.body.appendChild(a); a.click(); a.remove(); }
+        el('#saveFileBtn').addEventListener('dblclick', ()=> download(currentFile+'.nova', editor.value));
+
+        // Palette keyboard
+        el('#paletteInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ const pick = commands.find(c=>c.title.toLowerCase().includes(paletteInput.value.toLowerCase())); if(pick) pick.run(); togglePalette(false); } });
+
+        // Examples display
+        function showExamples(){ renderExamples(); setStatus('Examples loaded'); }
+
+        // initial render
+        renderExamples(); renderFileList(); renderTabs(); openFile(currentFile);
+
+        // Keep cursor info updated
+        editor.addEventListener('keyup', debounce(()=>{ const pos = editor.selectionStart; const before = editor.value.slice(0,pos); const ln = before.split(/\r?\n/).length; const col = before.split(/\r?\n/).pop().length + 1; el('#cursorPos').textContent = `Ln ${ln}, Col ${col}`; },80));
+
+        // expose for console during debugging
+        window.NovaIDE = { fm, doRun, saveCurrent, newFile, clearTerminal };
+    </script>
 </body>
 </html>
