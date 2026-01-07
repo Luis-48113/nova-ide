@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nova Web IDE</title>
+<style>
+    body {
+        font-family: monospace;
+        background: #111;
+        color: #eee;
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    #editor {
+        width: 90%;
+        height: 250px;
+        background: #222;
+        color: #eee;
+        font-family: monospace;
+        padding: 10px;
+        border: none;
+        outline: none;
+        resize: vertical;
+        margin-bottom: 10px;
+    }
+    #runBtn {
+        padding: 10px 20px;
+        font-size: 16px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        background: #444;
+        color: #eee;
+        border: none;
+    }
+    #terminal {
+        width: 90%;
+        min-height: 150px;
+        background: #222;
+        padding: 10px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        border: 1px solid #555;
+    }
+</style>
+</head>
+<body>
+
+<textarea id="editor">// Write your Nova code here
+define demo:
+    say"Hello from Nova Web IDE!"
+    x is 5
+    y is x plus 10
+    sayy
+    loop(3):
+        say"Looping..."
+    ask"What is your favorite number?"
+    say_input
+
+run demo
+</textarea>
+<button id="runBtn">Run</button>
+<div id="terminal"></div>
+
+<script>
+const modules = {
+    math: {
+        sqrt: (n) => Math.sqrt(n),
+        pow: (a,b) => Math.pow(a,b),
+        random: () => Math.random()
+    },
+    time: {
+        wait: (s) => new Promise(res => setTimeout(res, s*1000))
+    }
+};
+
+// Stage 5 Nova JS Interpreter
+async function runNova() {
+    const editor = document.getElementById("editor");
+    const terminal = document.getElementById("terminal");
+    const lines = editor.value.split("\n");
+    const functions = {};
+    const globalVars = {};
+    let localVars = {};
+    terminal.textContent = "";
+
+    async function executeLines(linesToRun) {
+        let i = 0;
+        while (i < linesToRun.length) {
+            let line = linesToRun[i].trim();
+            if (!line || line.startsWith("//")) { i++; continue; }
+
+            // DEFINE function
+            if (line.startsWith("define ")) {
+                const name = line.slice(7).replace(":", "").trim();
+                let body = [];
+                i++;
+                while (i < linesToRun.length && (linesToRun[i].startsWith("    ") || linesToRun[i].startsWith("\t"))) {
+                    body.push(linesToRun[i].replace(/^ {4}|\t/, ""));
+                    i++;
+                }
+                functions[name] = body;
+                continue;
+            }
+
+            // RUN function
+            else if (line.startsWith("run ")) {
+                const name = line.slice(4).trim();
+                if (!functions[name]) { terminal.textContent += `ERROR: Unknown function '${name}'\n`; return; }
+                await executeLines(functions[name]);
+            }
+
+            // Variable assignment
+            else if (line.includes(" is ")) {
+                let [varName, expr] = line.split(" is ");
+                varName = varName.trim();
+                expr = expr.trim();
+                let val = expr
+                    .replace(/\bplus\b/g,"+")
+                    .replace(/\bminus\b/g,"-")
+                    .replace(/\btimes\b/g,"*")
+                    .replace(/\bdivided by\b/g,"/");
+                try {
+                    val = eval(val.replace(/\b(\w+)\b/g, (m)=>{ return (localVars[m]!==undefined)?localVars[m]:(globalVars[m]!==undefined)?globalVars[m]:m; }));
+                } catch { terminal.textContent += `ERROR: Invalid expression '${expr}'\n`; return; }
+                localVars[varName] = val;
+            }
+
+            // SAY
+            else if (line.startsWith("say")) {
+                const content = line.slice(3).trim();
+                if ((content.startsWith('"') && content.endsWith('"')) || (content.startsWith("'") && content.endsWith("'"))) {
+                    terminal.textContent += content.slice(1,-1) + "\n";
+                } else if (localVars[content] !== undefined) {
+                    terminal.textContent += localVars[content] + "\n";
+                } else {
+                    terminal.textContent += `ERROR: Unknown variable or string '${content}'\n`;
+                    return;
+                }
+            }
+
+            // ASK
+            else if (line.startsWith("ask")) {
+                const question = line.slice(3).trim().slice(1,-1);
+                const answer = prompt(question);
+                localVars["input"] = answer;
+                localVars["input_value"] = answer;
+            }
+
+            // LOOP
+            else if (line.startsWith("loop")) {
+                let loopCount = null;
+                const match = line.match(/loop\((\d+)\)/);
+                if (match) loopCount = parseInt(match[1]);
+                const block = [];
+                i++;
+                while (i < linesToRun.length && (linesToRun[i].startsWith("    ") || linesToRun[i].startsWith("\t"))) {
+                    block.push(linesToRun[i].replace(/^ {4}|\t/, ""));
+                    i++;
+                }
+                if (!block.length) { terminal.textContent += `ERROR: loop has no body\n`; return; }
+                let iterations = 0;
+                while (loopCount === null || iterations < loopCount) {
+                    await executeLines(block);
+                    iterations++;
+                }
+                continue;
+            }
+
+            else {
+                terminal.textContent += `ERROR: Unknown command '${line}'\n`;
+                return;
+            }
+
+            i++;
+        }
+    }
+
+    await executeLines(lines);
+}
+
+document.getElementById("runBtn").addEventListener("click", runNova);
+</script>
+
+</body>
+</html>
