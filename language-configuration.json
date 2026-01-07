@@ -1,0 +1,28 @@
+{
+  "indent": {
+    "tabSize": 2,
+    "keepLines": false
+  },
+  "comments": {
+    "lineComment": {
+      "comment": "//"
+    },
+    "blockComment": [
+      "/*",
+      "*/"
+    ]
+  },
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "onEnterRules": [
+    {
+      "beforeText": "^.*:\\s*$",
+      "action": {
+        "indent": "indent"
+      }
+    }
+  ]
+}

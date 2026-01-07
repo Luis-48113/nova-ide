@@ -22,6 +22,12 @@
         "scopeName": "source.nova",
         "path": "./Syntaxes/nova.tmLanguage.json"
       }
+    ],
+    "languageConfigurations": [
+      {
+        "language": "nova",
+        "path": "./language-configuration.json"
+      }
     ]
   }
 }
