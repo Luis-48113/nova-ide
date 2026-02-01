@@ -10,7 +10,7 @@
             --radius:10px; --mono: 'Fira Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, 'Segoe UI Mono', monospace;
         }
         .jaeger {
-            --bg:#0a0a0a; --panel:#1a1a1a; --muted:#888888; --accent:#ff4444; --accent-2:#44ff44; --success:#00aa00; --danger:#aa0000; --glass:rgba(255,255,255,0.05);
+            --bg:#000000; --panel:#111111; --muted:#666666; --accent:#ff0000; --accent-2:#cc0000; --success:#ff0000; --danger:#ff0000; --glass:rgba(255,0,0,0.05);
         }
         html,body{height:100%; margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background:linear-gradient(180deg,var(--bg),#071019); color:#e6eef4}
         .app{display:flex; height:100vh; gap:18px; padding:18px; box-sizing:border-box}
@@ -55,7 +55,7 @@
 <body>
     <div class="app">
         <div class="sidebar">
-            <div class="brand"><div class="logo">N</div>Nova Web IDE</div>
+            <div class="brand"><img src="https://i.pinimg.com/originals/d5/3b/01/d53b014d86a6b6761bf649a0ed813c2b.png" alt="Jaeger Logo" style="width:36px; height:36px; border-radius:8px;">Jaeger IDE</div>
             <div class="small muted">Local in-browser environment — no server</div>
             <div class="files" id="fileList"></div>
             <div class="toolbar">
