@@ -360,7 +360,7 @@ run fib
                         } else { 
                             const p=new ExpressionParser(local,this.globals); 
                             const count = p.parse(countExpr);
-                            for(let k=0;k<count;k++) await this._execute(blk,{...local}); 
+                            for(let k=0;k<count;k++) await this._execute(blk,local);  // Changed: pass local instead of {...local} to allow accumulation
                         }
                         i--; continue;
                     }
