@@ -4,8 +4,8 @@
   "fileTypes": ["nova"],
   "patterns": [
     {
-      "name": "comment.line.double-slash.nova",
-      "match": "//.*$"
+      "name": "comment.line.number-sign.nova",
+      "match": "#.*$"
     },
     {
       "name": "string.quoted.double.nova",
@@ -19,16 +19,35 @@
       ]
     },
     {
+      "name": "string.quoted.single.nova",
+      "begin": "'",
+      "end": "'",
+      "patterns": [
+        {
+          "name": "constant.character.escape.nova",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
       "name": "constant.numeric.nova",
       "match": "\\b\\d+(?:\\.\\d+)?\\b"
     },
     {
       "name": "keyword.control.nova",
-      "match": "\\b(if|else|for|while|return|func|var|let)\\b"
+      "match": "\\b(define|run|loop|if|else|say|ask|print|clear|stop|clear_canvas|import)\\b"
+    },
+    {
+      "name": "keyword.operator.nova",
+      "match": "\\b(is|add|sub|mul|div|sqrt|pow|sin|cos|tan|abs|floor|ceil|round|len|upper|lower|concat|wait|random_int|random_float|time_now|pixel)\\b"
     },
     {
       "name": "constant.language.boolean.nova",
-      "match": "\\b(true|false|null)\\b"
+      "match": "\\b(true|false)\\b"
+    },
+    {
+      "name": "variable.nova",
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
     }
   ],
   "repository": {},

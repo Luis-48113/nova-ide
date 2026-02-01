@@ -7,17 +7,25 @@ It allows you to **write, run, and see your Nova code execute directly in the br
 
 ## Features
 
-- **Editor Area**: Type your Nova code with a clean, monospace interface.
+- **Editor Area**: Type your Nova code with a clean, monospace interface and auto-indentation.
 - **Run Button**: Execute your code instantly.
 - **Terminal Output**: Displays program output, errors, and prompts.
+- **Canvas**: For pixel-based graphics.
+- **Strict Syntax**: Requires proper syntax like ':' after define, loop, if.
+- **Import System**: Import built-in modules like time and random.
+- **Hundreds of Commands**: Math functions, string operations, random numbers, timing, etc.
 - **Beginner-Friendly Commands**:
-  - `say` → Print messages or variable values
+  - `say` / `print` → Print messages or variable values
   - `ask` → Ask user for input
   - `define` / `run` → Functions
-  - `loop(n)` / `loop` → Loops
-  - `check` / `otherwise` → Conditionals
-  - `wait(n)` → Pause execution (demo-safe)
-- **Safe Math Parser**: Handles expressions like `x is 5 plus 3 times 2`.
+  - `loop(n):` / `if cond:` / `else:` → Control flow
+  - `import module` → Load modules
+  - `pixel x,y,color` → Draw pixels
+  - Math: `add a,b,result`, `sqrt num`, `sin angle`, etc.
+  - Strings: `upper var`, `lower var`, `concat a,b,result`
+  - Random: `random_int min,max,var`, `random_float var`
+  - Time: `time_now var`, `wait ms`
+- **Safe Math Parser**: Handles expressions with variables and operators.
 
 ---
 
@@ -25,19 +33,45 @@ It allows you to **write, run, and see your Nova code execute directly in the br
 
 1. Open `index.html` in your web browser.
 2. Type your Nova code in the **editor area**.
-3. Click the **Run** button.
-4. See the output in the **terminal area**.
+3. Click the **Run** button or press Ctrl+Enter.
+4. See the output in the **terminal area** and canvas.
 
 ---
 
-## Example
+## Examples
 
+### Basic Function
 ```nova
-define greet:
-    name is ask'What is your name?'
-    say'Hello, ' plus name
+define hello:
+    loop(100):
+        say 'hello'
+run hello
+```
 
-run greet
+### If/Else with Random
+```nova
+random_int 1,10,num
+if num > 5:
+    say "Big number"
+else:
+    say "Small number"
+```
 
-loop(3):
-    say'Loop iteration!'
+### Pixel Drawing
+```nova
+pixel 50,50,"red"
+pixel 51,50,"red"
+pixel 52,50,"red"
+```
+
+### Math and Strings
+```nova
+num is 16
+sqrt num
+say "Square root: "
+say num
+
+text is "hello"
+upper text
+say text
+```

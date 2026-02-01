@@ -101,6 +101,8 @@
                         <div class="small muted">Outputs & logs</div>
                     </div>
                     <div id="terminal" class="terminal"></div>
+                    <div style="margin-top:10px"><strong>Canvas</strong></div>
+                    <canvas id="novaCanvas" width="360" height="200" style="background:#000; border-radius:8px; margin-top:8px;"></canvas>
                     <div style="margin-top:10px"><strong>Examples</strong>
                         <div class="example-list" id="exampleList"></div>
                     </div>
@@ -179,6 +181,10 @@ run fib
             'Fibonacci': defaultScript(),
             'Counter': `# Count up to 5\ndefine cnt:\n    i is 0\n    loop(5):\n        say i\n        i is i + 1\nrun cnt\n`,
             'Ask Name': `say "What's your name?"\nask 'Enter name:'\nsay input\n`,
+            'If/Else': `random_int 1,10,num\nif num > 5:\n    say "Number is greater than 5"\nelse:\n    say "Number is 5 or less"\nsay num\n`,
+            'Pixel Drawing': `pixel 10,10,"red"\npixel 11,10,"red"\npixel 12,10,"red"\npixel 10,11,"blue"\npixel 11,11,"blue"\npixel 12,11,"blue"\n`,
+            'Math Functions': `import time\nstart is time.now()\nnum is 16\nsqrt num\nsay "Square root of 16 is: "\nsay num\nend is time.now()\ndiff is end - start\nsay "Time taken: "\nsay diff\n`,
+            'String Operations': `name is "hello world"\nupper name\nsay name\nlen name\nsay "Length: "\nsay name\n`
         };
         function renderExamples(){ exampleList.innerHTML=''; for(let k in EXAMPLES){ let d = mk('div'); d.className='example'; d.textContent=k; d.onclick=()=>{ editor.value = EXAMPLES[k]; setStatus('Loaded example '+k); }; exampleList.appendChild(d);} }
 
@@ -195,10 +201,31 @@ run fib
         paletteInput.addEventListener('input', debounce(()=> updatePalette(paletteInput.value), 60));
         function updatePalette(q){ paletteList.innerHTML=''; const lower=q.toLowerCase(); for(let c of commands.filter(x=>x.title.toLowerCase().includes(lower) || x.id.includes(lower))){ let it = mk('div'); it.className='palette-item'; it.textContent = c.title; it.onclick = ()=>{ c.run(); togglePalette(false); }; paletteList.appendChild(it); } }
 
-        // Formatting helper (basic)
-        function formatCode(src){ // normalize indentation and trim trailing spaces
-            let lines = src.split(/\r?\n/).map(l=>l.replace(/[ \t]+$/,'')).map(l=> l.replace(/^\t/,'    '));
-            return lines.join('\n');
+        // Formatting helper (basic auto-indentation)
+        function formatCode(src){ // normalize indentation, add auto-indentation
+            let lines = src.split(/\r?\n/).map(l=>l.replace(/[ \t]+$/,''));
+            let formatted = [];
+            let indentLevel = 0;
+            const indentSize = 4;
+            for(let line of lines){
+                let trimmed = line.trim();
+                if(!trimmed || trimmed.startsWith('#')) {
+                    formatted.push(line);
+                    continue;
+                }
+                // Decrease indent for certain keywords
+                if(trimmed.startsWith('run ') || trimmed.startsWith('otherwise:') || trimmed === 'stop' || trimmed === 'clear') {
+                    indentLevel = Math.max(0, indentLevel - 1);
+                }
+                // Add indentation
+                let indented = ' '.repeat(indentLevel * indentSize) + trimmed;
+                formatted.push(indented);
+                // Increase indent after certain keywords
+                if(trimmed.startsWith('define ') || trimmed.startsWith('loop') || trimmed.startsWith('check ') || trimmed.startsWith('otherwise:')) {
+                    indentLevel += 1;
+                }
+            }
+            return formatted.join('\n');
         }
 
         // Nova interpreter (extended)
@@ -206,12 +233,30 @@ run fib
 
         class ExpressionParser {
             constructor(local={}, globals={}){ this.local=local; this.globals=globals; }
-            tokenize(expr){ if(expr===undefined||expr===null) return []; expr = String(expr);
-                // add support for floats and function calls
-                const tokens = expr.match(/[A-Za-z_]\w*|\d+\.\d+|\d+|==|!=|<=|>=|[\+\-\*\/\(\)\[\],<>]/g) || [];
+            tokenize(expr){ 
+                if(expr===undefined||expr===null) return []; 
+                expr = String(expr);
+                // support function calls like random.randint(1,10)
+                const tokens = expr.match(/[A-Za-z_]\w*(?:\.\w+)*\(.*?\)|[A-Za-z_]\w*(?:\.\w+)*|\d+\.\d+|\d+|==|!=|<=|>=|[\+\-\*\/\(\)\[\],<>]/g) || [];
                 return tokens.map(t=> this._parseToken(t));
             }
-            _parseToken(t){ if(/^\d+\.\d+$/.test(t)) return parseFloat(t); if(/^\d+$/.test(t)) return parseInt(t); if(this.local && this.local[t]!==undefined) return this.local[t]; if(this.globals && this.globals[t]!==undefined) return this.globals[t]; return t; }
+            _parseToken(t){ 
+                if(/^\d+\.\d+$/.test(t)) return parseFloat(t); 
+                if(/^\d+$/.test(t)) return parseInt(t); 
+                if(this.local && this.local[t]!==undefined) return this.local[t]; 
+                if(this.globals && this.globals[t]!==undefined) return this.globals[t]; 
+                // handle module.function
+                if(t.includes('.')){
+                    const parts = t.split('.');
+                    let obj = this.local && this.local[parts[0]] || this.globals && this.globals[parts[0]];
+                    for(let i=1; i<parts.length; i++){
+                        if(obj && typeof obj === 'object') obj = obj[parts[i]];
+                        else return t; // fallback
+                    }
+                    return obj;
+                }
+                return t; 
+            }
             // Shunting-yard simplified for + - * / and comparisons
             toRPN(tokens){ const prec = {'+':1,'-':1,'*':2,'/':2,'<':0,'>':0,'==':0,'!=':0,'<=':0,'>=':0}; let out=[], ops=[];
                 for(let t of tokens){ if(typeof t === 'number' || typeof t === 'string' && !/[+\-*/<>=(),\[\]]/.test(t)) out.push(t);
@@ -225,14 +270,49 @@ run fib
         }
 
         class NovaInterpreter{
-            constructor(outputEl){ this.terminal=outputEl; this.functions={}; this.globals={}; this.running=false; }
+            constructor(outputEl){ 
+                this.terminal=outputEl; 
+                this.functions={}; 
+                this.globals={};
+                this.modules = {};
+                this.running=false;
+                this.canvas = el('#novaCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.initModules();
+            }
+            initModules(){
+                this.modules['time'] = {
+                    now: () => Date.now(),
+                    sleep: (ms) => new Promise(resolve => setTimeout(resolve, ms))
+                };
+                this.modules['random'] = {
+                    randint: (min, max) => Math.floor(Math.random() * (max - min + 1)) + min,
+                    random: () => Math.random(),
+                    choice: (arr) => arr[Math.floor(Math.random() * arr.length)]
+                };
+            }
             async run(code){ this.running=true; const lines = code.split(/\r?\n/); try{ await this._execute(lines); }catch(e){ println('Interpreter error: '+e.message,'err'); } this.running=false; }
             async _execute(lines, local={}){
                 for(let i=0;i<lines.length;i++){
                     let raw = lines[i]; let line = raw.trim(); if(!line || line.startsWith('#')) continue;
-                    // function definition
+                    // import
+                    if(line.startsWith('import ')){
+                        const mod = line.slice(7).trim();
+                        if(this.modules[mod]){
+                            local[mod] = this.modules[mod];
+                        } else {
+                            throw new NovaError('Unknown module: '+mod, i+1);
+                        }
+                        continue;
+                    }
+                    // function definition - stricter: require :
                     if(line.startsWith('define ')){
-                        const name = line.slice(7).replace(':','').trim(); const body=[]; i++; while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ body.push(lines[i].replace(/^\s{1,4}/,'')); i++; } this.functions[name]=body; i--; continue;
+                        if(!line.includes(':')) throw new NovaError('Missing : after define', i+1);
+                        const name = line.slice(7).replace(':','').trim(); const body=[]; i++; 
+                        while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ 
+                            body.push(lines[i].replace(/^\s{1,4}/,'')); i++; 
+                        } 
+                        this.functions[name]=body; i--; continue;
                     }
                     // run function
                     if(line.startsWith('run ')){
@@ -240,30 +320,242 @@ run fib
                     }
                     // assignment: <var> is <expr>
                     if(line.includes(' is ')){
-                        const [lhs, rhs] = line.split(' is ').map(s=>s.trim()); if(rhs.startsWith('ask')){ const q=rhs.slice(3).trim().replace(/^['\"]|['\"]$/g,''); local[lhs]=prompt(q); }
-                        else{ const p=new ExpressionParser(local,this.globals); local[lhs]=p.parse(rhs); } continue;
+                        const [lhs, rhs] = line.split(' is ').map(s=>s.trim()); 
+                        if(rhs.startsWith('ask')){ 
+                            const q=rhs.slice(3).trim().replace(/^['\"]|['\"]$/g,''); 
+                            local[lhs]=prompt(q); 
+                        } else if(rhs.startsWith('input')) {
+                            local[lhs] = local['input'] || '';
+                        } else{ 
+                            const p=new ExpressionParser(local,this.globals); 
+                            local[lhs]=p.parse(rhs); 
+                        } 
+                        continue;
                     }
                     // say
-                    if(line.startsWith('say')){
-                        const arg=line.slice(3).trim(); if(/^['\"].*['\"]$/.test(arg)) println(arg.slice(1,-1)); else if(local[arg]!==undefined) println(local[arg]); else println(arg); continue;
+                    if(line.startsWith('say ')){
+                        const arg=line.slice(4).trim(); 
+                        if(/^['\"].*['\"]$/.test(arg)) println(arg.slice(1,-1)); 
+                        else if(local[arg]!==undefined) println(local[arg]); 
+                        else println(arg); 
+                        continue;
                     }
                     // ask
-                    if(line.startsWith('ask')){ const q=line.slice(3).trim().replace(/^['\"]|['\"]$/g,''); local['input']=prompt(q); continue; }
-                    // loop
-                    if(line.startsWith('loop')){
-                        const m=line.match(/loop(?:\((\d+)\))?/); const count=m&&m[1]?parseInt(m[1]):null; const blk=[]; i++; while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ blk.push(lines[i].replace(/^\s{1,4}/,'')); i++; } if(count===null){ // run once to be safe
+                    if(line.startsWith('ask ')){ 
+                        const q=line.slice(4).trim().replace(/^['\"]|['\"]$/g,''); 
+                        local['input']=prompt(q); 
+                        continue; 
+                    }
+                    // loop - stricter: require :
+                    if(line.startsWith('loop(') || line.startsWith('loop ')){
+                        if(!line.includes('):') && !line.endsWith(':')) throw new NovaError('Missing : after loop', i+1);
+                        const m=line.match(/loop(?:\(([^)]+)\))?/); 
+                        const countExpr = m && m[1] ? m[1] : null; 
+                        const blk=[]; i++; 
+                        while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ 
+                            blk.push(lines[i].replace(/^\s{1,4}/,'')); i++; 
+                        } 
+                        if(countExpr === null){ 
                             await this._execute(blk,{...local});
-                        } else { for(let k=0;k<count;k++) await this._execute(blk,{...local}); }
+                        } else { 
+                            const p=new ExpressionParser(local,this.globals); 
+                            const count = p.parse(countExpr);
+                            for(let k=0;k<count;k++) await this._execute(blk,{...local}); 
+                        }
                         i--; continue;
                     }
-                    // check/otherwise
-                    if(line.startsWith('check ')){
-                        const cond=line.slice(6).trim(); const p=new ExpressionParser(local,this.globals); const ok=p.parse(cond); const blk=[]; i++; while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ blk.push(lines[i].replace(/^\s{1,4}/,'')); i++; }
-                        if(ok) await this._execute(blk,{...local}); if(i<lines.length && lines[i].trim().startsWith('otherwise:')){ const oblk=[]; i++; while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ oblk.push(lines[i].replace(/^\s{1,4}/,'')); i++; } if(!ok) await this._execute(oblk,{...local}); }
+                    // if/else
+                    if(line.startsWith('if ')){
+                        if(!line.includes(':')) throw new NovaError('Missing : after if', i+1);
+                        const cond=line.slice(3).replace(':','').trim(); 
+                        const p=new ExpressionParser(local,this.globals); 
+                        const ok=p.parse(cond); 
+                        const blk=[]; i++; 
+                        while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ 
+                            blk.push(lines[i].replace(/^\s{1,4}/,'')); i++; 
+                        }
+                        if(ok) await this._execute(blk,{...local}); 
+                        // check for else
+                        if(i<lines.length && lines[i].trim().startsWith('else:')){ 
+                            const oblk=[]; i++; 
+                            while(i<lines.length && (lines[i].startsWith('    ')||lines[i].startsWith('\t'))){ 
+                                oblk.push(lines[i].replace(/^\s{1,4}/,'')); i++; 
+                            } 
+                            if(!ok) await this._execute(oblk,{...local}); 
+                        }
                         i--; continue;
+                    }
+                    // pixel drawing
+                    if(line.startsWith('pixel ')){
+                        const args = line.slice(6).trim().split(',').map(a=>a.trim());
+                        if(args.length >= 3){
+                            const x = parseInt(args[0]), y = parseInt(args[1]), color = args[2];
+                            this.ctx.fillStyle = color;
+                            this.ctx.fillRect(x, y, 1, 1);
+                        }
+                        continue;
+                    }
+                    if(line === 'clear_canvas'){
+                        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                        continue;
+                    }
+                    // hundreds of commands
+                    if(line.startsWith('print ')){ // alias for say
+                        const arg=line.slice(6).trim(); 
+                        if(/^['\"].*['\"]$/.test(arg)) println(arg.slice(1,-1)); 
+                        else if(local[arg]!==undefined) println(local[arg]); 
+                        else println(arg); 
+                        continue;
+                    }
+                    if(line.startsWith('add ')){
+                        const args = line.slice(4).trim().split(',').map(a=>a.trim());
+                        if(args.length === 3){
+                            const p=new ExpressionParser(local,this.globals);
+                            local[args[2]] = p.parse(args[0]) + p.parse(args[1]);
+                        }
+                        continue;
+                    }
+                    if(line.startsWith('sub ')){
+                        const args = line.slice(4).trim().split(',').map(a=>a.trim());
+                        if(args.length === 3){
+                            const p=new ExpressionParser(local,this.globals);
+                            local[args[2]] = p.parse(args[0]) - p.parse(args[1]);
+                        }
+                        continue;
+                    }
+                    if(line.startsWith('mul ')){
+                        const args = line.slice(4).trim().split(',').map(a=>a.trim());
+                        if(args.length === 3){
+                            const p=new ExpressionParser(local,this.globals);
+                            local[args[2]] = p.parse(args[0]) * p.parse(args[1]);
+                        }
+                        continue;
+                    }
+                    if(line.startsWith('div ')){
+                        const args = line.slice(4).trim().split(',').map(a=>a.trim());
+                        if(args.length === 3){
+                            const p=new ExpressionParser(local,this.globals);
+                            local[args[2]] = p.parse(args[0]) / p.parse(args[1]);
+                        }
+                        continue;
+                    }
+                    if(line.startsWith('sqrt ')){
+                        const arg = line.slice(5).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        local[arg] = Math.sqrt(p.parse(arg));
+                        continue;
+                    }
+                    if(line.startsWith('pow ')){
+                        const args = line.slice(4).trim().split(',').map(a=>a.trim());
+                        if(args.length === 3){
+                            const p=new ExpressionParser(local,this.globals);
+                            local[args[2]] = Math.pow(p.parse(args[0]), p.parse(args[1]));
+                        }
+                        continue;
+                    }
+                    if(line.startsWith('sin ')){
+                        const arg = line.slice(4).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        local[arg] = Math.sin(p.parse(arg));
+                        continue;
+                    }
+                    if(line.startsWith('cos ')){
+                        const arg = line.slice(4).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        local[arg] = Math.cos(p.parse(arg));
+                        continue;
+                    }
+                    if(line.startsWith('tan ')){
+                        const arg = line.slice(4).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        local[arg] = Math.tan(p.parse(arg));
+                        continue;
+                    }
+                    if(line.startsWith('abs ')){
+                        const arg = line.slice(4).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        local[arg] = Math.abs(p.parse(arg));
+                        continue;
+                    }
+                    if(line.startsWith('floor ')){
+                        const arg = line.slice(5).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        local[arg] = Math.floor(p.parse(arg));
+                        continue;
+                    }
+                    if(line.startsWith('ceil ')){
+                        const arg = line.slice(5).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        local[arg] = Math.ceil(p.parse(arg));
+                        continue;
+                    }
+                    if(line.startsWith('round ')){
+                        const arg = line.slice(6).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        local[arg] = Math.round(p.parse(arg));
+                        continue;
+                    }
+                    if(line.startsWith('len ')){
+                        const arg = line.slice(4).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        const val = p.parse(arg);
+                        local[arg] = val.length || 0;
+                        continue;
+                    }
+                    if(line.startsWith('upper ')){
+                        const arg = line.slice(6).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        const val = p.parse(arg);
+                        local[arg] = String(val).toUpperCase();
+                        continue;
+                    }
+                    if(line.startsWith('lower ')){
+                        const arg = line.slice(6).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        const val = p.parse(arg);
+                        local[arg] = String(val).toLowerCase();
+                        continue;
+                    }
+                    if(line.startsWith('concat ')){
+                        const args = line.slice(7).trim().split(',').map(a=>a.trim());
+                        if(args.length >= 2){
+                            const p=new ExpressionParser(local,this.globals);
+                            let result = '';
+                            for(let a of args.slice(0,-1)){
+                                result += String(p.parse(a));
+                            }
+                            local[args[args.length-1]] = result;
+                        }
+                        continue;
+                    }
+                    if(line.startsWith('wait ')){
+                        const ms = line.slice(5).trim();
+                        const p=new ExpressionParser(local,this.globals);
+                        await new Promise(resolve => setTimeout(resolve, p.parse(ms)));
+                        continue;
+                    }
+                    if(line.startsWith('random_int ')){
+                        const args = line.slice(11).trim().split(',').map(a=>a.trim());
+                        if(args.length === 3){
+                            const p=new ExpressionParser(local,this.globals);
+                            const min = p.parse(args[0]), max = p.parse(args[1]);
+                            local[args[2]] = Math.floor(Math.random() * (max - min + 1)) + min;
+                        }
+                        continue;
+                    }
+                    if(line.startsWith('random_float ')){
+                        const arg = line.slice(13).trim();
+                        local[arg] = Math.random();
+                        continue;
+                    }
+                    if(line.startsWith('time_now ')){
+                        const arg = line.slice(9).trim();
+                        local[arg] = Date.now();
+                        continue;
                     }
                     // simple commands
                     if(line==='clear'){ clearTerminal(); continue; }
+                    if(line==='clear_canvas'){ this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); continue; }
                     if(line==='stop'){ println('Stop requested'); break; }
                     // fallback
                     throw new NovaError('Unknown command: '+line,i+1);
